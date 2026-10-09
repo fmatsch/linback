@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>linback – Backup und Restore für Linux-Server</title>
+<meta name="description" content="Sichert Linux-Server per SSH in ein hardwareunabhängiges, verschlüsseltes Archiv und stellt sie auf neuer Hardware wieder her – mit Assistent für macOS und Windows, speziell für Hetzner-Server mit Rescue-System.">
+<meta property="og:title" content="linback">
+<meta property="og:description" content="Linux-Server per SSH sichern und auf neuer Hardware wiederherstellen – hardwareunabhängig und verschlüsselt.">
+<meta property="og:image" content="https://fmatsch.ist/linback/icon.png">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  :root {
+    --bg: #f6f5f1; --surface: #ffffff; --text: #1c1b19; --muted: #6b6860;
+    --line: #e4e1d9; --accent: #2563eb; --chip: #efede6;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --surface: #1d1c1a; --text: #f1efe9; --muted: #a19d93;
+      --line: #2e2c29; --accent: #60a5fa; --chip: #272522;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --surface: #1d1c1a; --text: #f1efe9; --muted: #a19d93;
+    --line: #2e2c29; --accent: #60a5fa; --chip: #272522;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  .crumb { padding: 20px 0 0; font-size: 14px; color: var(--muted); }
+  .crumb a { text-decoration: none; }
+  .crumb a:hover { color: var(--accent); }
+
+  .hero { display: flex; gap: 28px; align-items: center; padding: 48px 0 32px; flex-wrap: wrap; }
+  .hero img.icon { width: 112px; height: 112px; border-radius: 26px; box-shadow: var(--shadow); flex: none; }
+  .hero h1 { font-size: clamp(32px, 6vw, 52px); letter-spacing: -0.03em; line-height: 1.05; margin: 0 0 12px; }
+  .hero p { margin: 0; color: var(--muted); font-size: 18px; max-width: 56ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 24px 0 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    padding: 11px 20px; border-radius: 12px; font-weight: 600; font-size: 16px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dl-meta { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 1.2em; }
+  .dl-all { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .dl-all a { margin-right: 14px; }
+
+  figure { margin: 24px 0 8px; }
+  figure img {
+    display: block; width: 100%; height: auto; border-radius: 14px;
+    border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  figure.narrow { max-width: 720px; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+  h2 {
+    font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 56px 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; padding: 0; margin: 0; list-style: none; }
+  .steps li {
+    counter-increment: s; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); font-size: 15px;
+  }
+  .steps li::before {
+    content: counter(s); display: grid; place-items: center; width: 26px; height: 26px;
+    border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; margin-bottom: 10px;
+  }
+  .steps b { display: block; margin-bottom: 2px; }
+  .steps span { color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .card h3 { margin: 0 0 6px; font-size: 16px; letter-spacing: -0.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 12px; padding: 16px 20px; box-shadow: var(--shadow); }
+  .note p { margin: 0 0 10px; } .note p:last-child { margin: 0; }
+  ul.plain { margin: 0; padding-left: 20px; color: var(--muted); }
+  ul.plain li { margin: 6px 0; } ul.plain b { color: var(--text); }
+  code { background: var(--chip); padding: 1px 6px; border-radius: 6px; font-size: .92em; }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 48px;
+    color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between;
+  }
+  footer a { color: var(--muted); } footer a:hover { color: var(--accent); }
+  @media (max-width: 480px) { .hero { padding-top: 32px; } .hero img.icon { width: 84px; height: 84px; border-radius: 20px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumb"><a href="https://fmatsch.ist/">← fmatsch.ist</a></div>
+
+  <header class="hero">
+    <img class="icon" src="icon.png" alt="" width="112" height="112">
+    <div>
+      <h1>linback</h1>
+      <p>Sichert einen Linux-Server per SSH in ein verschlüsseltes, hardwareunabhängiges Archiv und stellt ihn auf neuer Hardware wieder her – mit Assistent für macOS und Windows, jeder Schritt erklärt.</p>
+      <div class="actions">
+        <a class="btn primary" id="dl" href="https://github.com/fmatsch/linback/releases/latest">⬇ Herunterladen</a>
+        <a class="btn" id="src" href="https://github.com/fmatsch/linback">Quellcode auf GitHub</a>
+      </div>
+      <div class="dl-meta" id="dl-meta">v0.1.0 · macOS (Apple Silicon und Intel) · Windows · kostenlos, MIT-Lizenz</div>
+      <div class="dl-all" id="dl-all" hidden></div>
+    </div>
+  </header>
+
+  <figure>
+    <img src="screenshot.png" alt="Die Analyse eines Servers: System, was gesichert wird, Hinweise zu laufenden Datenbanken" width="2360" height="1616">
+    <figcaption>Schritt 1: Der Server wird nur lesend analysiert – mit Hinweisen auf Risiken wie laufende Datenbanken. (Demo-Daten)</figcaption>
+  </figure>
+
+  <h2>So läuft es ab</h2>
+  <ol class="steps">
+    <li><b>Verbinden</b><span>Per SSH. Nur lesende Analyse: System, Platten, Netzwerk, Risiken.</span></li>
+    <li><b>Backup</b><span>tar-Strom, komprimiert und verschlüsselt direkt auf deinen Rechner. Nichts wird auf dem Server zwischengespeichert.</span></li>
+    <li><b>Prüfen</b><span>SHA-256 und HMAC – damit du dich im Ernstfall auf das Backup verlassen kannst.</span></li>
+    <li><b>Wiederherstellen</b><span>Zielserver im Rescue-System: Platten aufteilen, entpacken, an die Hardware anpassen.</span></li>
+    <li><b>Boot-ISO</b><span>Optional: Restore-Werkzeug in ein Live-ISO einbetten.</span></li>
+  </ol>
+
+  <h2>Funktionen</h2>
+  <div class="grid">
+    <div class="card"><h3>Hardwareunabhängig</h3><p>Das Backup enthält bewusst keine Partitionstabelle, keinen Bootloader, keine UUIDs. All das entsteht erst beim Restore passend zur Zielhardware – so kannst du auch auf neue Server umziehen.</p></div>
+    <div class="card"><h3>Jeder Schritt erklärt</h3><p>In der App steht bei jedem Schritt, was genau passiert – bis zum exakten Befehl, der auf dem Server läuft. Das Analyse-Skript lässt sich vorher ansehen.</p></div>
+    <div class="card"><h3>Verschlüsselt</h3><p>AES-256 mit Passphrase, lokal auf deinem Rechner. Der Server sieht sie nie. Das Format ist openssl-kompatibel, ein HMAC schützt vor Manipulation und falscher Passphrase – geprüft, bevor Platten gelöscht werden.</p></div>
+    <div class="card"><h3>Hetzner Rescue-System</h3><p>Kein Installationsmedium nötig: Das Archiv wird durch SSH gestreamt und direkt entpackt – ohne Zwischenspeicher im Arbeitsspeicher des Rescue-Systems.</p></div>
+    <div class="card"><h3>BIOS und UEFI, auch RAID1</h3><p>Einzelne Platte oder Software-RAID1, GPT-Partitionen, GRUB für BIOS oder UEFI – mit Fallback-Pfad, falls das Mainboard den Boot-Eintrag nicht kennt.</p></div>
+    <div class="card"><h3>Netzwerk und Treiber angepasst</h3><p>Neue fstab mit neuen UUIDs, initramfs mit allen Treibern, Netzwerk wahlweise vom Zielserver übernommen oder vom Original angepasst. Das Interface wird per MAC-Adresse gefunden.</p></div>
+    <div class="card"><h3>Auch ohne App</h3><p>Der Backup-Ordner enthält das Restore-Skript. <code>bash linback-restore.sh wizard</code> genügt im Rescue-System oder Live-ISO.</p></div>
+    <div class="card"><h3>Rechte bleiben erhalten</h3><p>Besitzer, Rechte, ACLs, erweiterte Attribute, Symlinks, Hardlinks und Sparse-Dateien werden gesichert und wiederhergestellt.</p></div>
+    <div class="card"><h3>Vorbereitender Befehl</h3><p>Vor dem Backup kann ein eigener Befehl laufen – etwa ein Datenbank-Dump –, damit die Daten konsistent sind.</p></div>
+  </div>
+
+  <figure>
+    <img src="screenshot-restore.png" alt="Wiederherstellung: Auswahl der Zielplatten, RAID1-Layout, Netzwerk-Modus und Vorschau der Partitionierung" width="2360" height="1616" loading="lazy">
+    <figcaption>Schritt 4: Layout und Netzwerk wählen – die Vorschau zeigt die Partitionierung, bevor irgendetwas gelöscht wird. (Demo-Daten)</figcaption>
+  </figure>
+
+  <h2>Gut zu wissen</h2>
+  <div class="note">
+    <p><b>Getestet in emulierten Servern, nicht auf echter Hardware.</b> Backup und Wiederherstellung wurden mit Ubuntu 22.04 in virtuellen Maschinen geprüft: BIOS und UEFI, einzelne Platte und RAID1. Das wiederhergestellte System bootete jeweils und alle Daten, Rechte und das Netzwerk stimmten. Auf echter Hetzner-Hardware, mit Secure Boot oder LVM wurde noch nicht getestet – probiere es zuerst mit einem unwichtigen Server.</p>
+  </div>
+  <ul class="plain" style="margin-top:16px">
+    <li><b>Löscht Daten:</b> Die Wiederherstellung überschreibt die gewählten Zielplatten vollständig und verlangt dafür eine ausdrückliche Bestätigung.</li>
+    <li><b>Passphrase:</b> Sie wird nirgends gespeichert. Geht sie verloren, ist das Backup unwiederbringlich verloren.</li>
+    <li><b>Laufende Datenbanken:</b> Dateien einer laufenden Datenbank sind im Backup nicht konsistent. Lege vorher einen Dump an oder stoppe den Dienst.</li>
+    <li><b>Nur x86_64</b> (Ubuntu/Debian) als Ziel. Aktuell nur Ubuntu getestet.</li>
+    <li><b>Keine Wiederaufnahme:</b> Ein abgebrochenes Backup startet von vorn.</li>
+    <li><b>SmartScreen / Gatekeeper:</b> Die Programme sind nicht code-signiert. Windows zeigt „Weitere Informationen → Trotzdem ausführen“, macOS fragt beim ersten Start (Rechtsklick → Öffnen). Die Prüfsummen stehen in der Datei <code>SHA256SUMS</code> beim Release.</li>
+  </ul>
+
+  <footer>
+    <span>© <span id="year">2026</span> Florian Matscheko · MIT-Lizenz</span>
+    <span><a href="https://github.com/fmatsch/linback">GitHub</a> · <a href="https://fmatsch.ist/">fmatsch.ist</a></span>
+  </footer>
+</div>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+
+  // Direktlinks zum neuesten Release; ohne Netz oder ohne Release bleibt der statische Link.
+  const FILES = [
+    { os: "windows", label: "Windows", name: "linback-windows-x64-setup.exe" },
+    { os: "macos-arm", label: "macOS (Apple Silicon)", name: "linback-macos-arm64.dmg" },
+    { os: "macos-intel", label: "macOS (Intel)", name: "linback-macos-x64.dmg" },
+  ];
+  const ua = (navigator.userAgent || "") + " " + (navigator.platform || "");
+  const mine = /Win/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos-arm" : "windows";
+
+  fetch("https://api.github.com/repos/fmatsch/linback/releases/latest")
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(rel => {
+      const found = FILES.map(f => ({ ...f, asset: (rel.assets || []).find(a => a.name === f.name) })).filter(f => f.asset);
+      if (!found.length) return;
+      const pick = found.find(f => f.os === mine) || found[0];
+      const dl = document.getElementById("dl");
+      dl.href = pick.asset.browser_download_url;
+      dl.textContent = "⬇ Für " + pick.label + " herunterladen";
+      document.getElementById("dl-meta").textContent =
+        `${rel.tag_name} · ${Math.round(pick.asset.size / 1048576)} MB · kostenlos, MIT-Lizenz`;
+      const all = document.getElementById("dl-all");
+      all.replaceChildren("Alle: ", ...found.map(f => Object.assign(document.createElement("a"),
+        { href: f.asset.browser_download_url, textContent: f.label })));
+      all.hidden = false;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

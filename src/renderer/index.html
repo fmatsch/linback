@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>linback</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">⟲</span> linback <small>Linux-Server-Backup &amp; Restore</small></div>
+  <nav id="tabs">
+    <button data-tab="1" class="active"><b>1</b> Verbinden</button>
+    <button data-tab="2"><b>2</b> Backup</button>
+    <button data-tab="3"><b>3</b> Prüfen</button>
+    <button data-tab="4"><b>4</b> Wiederherstellen</button>
+    <button data-tab="5"><b>5</b> Boot-ISO</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============================================================ 1 -->
+<section id="tab-1" class="panel active">
+  <h1>1 · Mit dem Server verbinden &amp; analysieren</h1>
+  <details class="explain" open>
+    <summary>Was passiert in diesem Schritt?</summary>
+    <ol>
+      <li>Die App öffnet eine <b>SSH-Verbindung</b> zu deinem Server. Beim ersten Mal zeigt sie den <b>Fingerabdruck</b> des Server-Schlüssels; du bestätigst ihn (wie bei <code>ssh</code> im Terminal). Ändert er sich später, wirst du gewarnt.</li>
+      <li>Dann läuft ein kurzes, <b>rein lesendes</b> Shell-Skript (unten einsehbar). Es installiert nichts, schreibt nichts und ändert nichts auf dem Server.</li>
+      <li>Es sammelt: Betriebssystem &amp; Kernel, CPU/RAM, <b>Boot-Modus</b> (UEFI oder BIOS), Platten &amp; Mountpoints mit belegtem Platz, RAID/LVM, <code>fstab</code>, Netzwerk (<code>netplan</code>), vorhandene Werkzeuge (<code>tar</code>, <code>zstd</code>) und laufende Dienste (Datenbanken, Docker).</li>
+      <li>Daraus berechnet die App, <b>was gesichert wird</b> (nur echte lokale Dateisysteme wie ext4/xfs/btrfs — kein <code>/proc</code>, <code>/sys</code>, NFS, tmpfs), wie groß das Backup etwa wird und welche <b>Risiken</b> es gibt (z. B. laufende Datenbanken).</li>
+    </ol>
+    <p>Dein Passwort bleibt nur im Arbeitsspeicher dieser App und wird nie gespeichert. Empfohlen: Anmeldung als <code>root</code> mit SSH-Schlüssel — nur dann sind alle Dateien lesbar.</p>
+    <details><summary>Das ausgeführte Skript anzeigen</summary><pre id="analyze-script" class="code"></pre></details>
+  </details>
+
+  <form id="conn-form" class="grid" autocomplete="off">
+    <label>Host / IP <input id="c-host" required placeholder="server.example.de"></label>
+    <label>Port <input id="c-port" type="number" value="22"></label>
+    <label>Benutzer <input id="c-user" value="root"></label>
+    <label>Passwort <input id="c-pass" type="password" placeholder="(leer bei Schlüssel)"></label>
+    <label class="wide">SSH-Schlüsseldatei (optional)
+      <span class="row"><input id="c-key" readonly placeholder="z. B. ~/.ssh/id_ed25519"><button type="button" id="c-key-pick">Wählen …</button><button type="button" id="c-key-clear" class="ghost">×</button></span></label>
+    <label>Schlüssel-Passphrase <input id="c-pass2" type="password"></label>
+    <label class="check"><input id="c-sudo" type="checkbox"> <span>sudo verwenden (nur mit <code>NOPASSWD</code>)</span></label>
+    <div class="wide"><button id="c-go" class="primary">Verbinden &amp; analysieren</button> <span id="c-status" class="status"></span></div>
+  </form>
+  <div id="analysis"></div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="tab-2" class="panel">
+  <h1>2 · Backup erstellen</h1>
+  <details class="explain" open>
+    <summary>Was passiert in diesem Schritt?</summary>
+    <ol>
+      <li><b>Optional:</b> Ein von dir angegebener <i>vorbereitender Befehl</i> läuft zuerst auf dem Server (z. B. ein Datenbank-Dump), damit die Daten konsistent sind.</li>
+      <li>Auf dem Server startet <b>GNU tar</b> und liest <code>/</code> sowie alle weiteren lokalen Dateisysteme. <code>--one-file-system</code> verhindert, dass <code>/proc</code>, <code>/sys</code>, NFS-Freigaben oder tmpfs mitgelesen werden. Gesichert werden <b>Besitzer (numerisch), Rechte, ACLs, erweiterte Attribute, Symlinks, Hardlinks und Sparse-Dateien</b>.</li>
+      <li>Der tar-Strom wird <b>auf dem Server komprimiert</b> (zstd, sonst gzip) — mit niedriger Priorität (<code>nice</code>/<code>ionice</code>), damit laufende Dienste nicht leiden.</li>
+      <li>Der komprimierte Strom läuft <b>verschlüsselt durch die SSH-Verbindung</b> direkt in eine Datei auf deinem Rechner (<code>system.tar.zst.enc.partial</code>). Es wird <b>nichts auf dem Server zwischengespeichert</b>. Dabei wird live eine SHA-256-Prüfsumme berechnet.</li>
+      <li><b>Archiv-Verschlüsselung (empfohlen):</b> Auf <i>deinem Rechner</i> wird der Strom zusätzlich mit <b>AES-256</b> verschlüsselt; der Schlüssel wird per PBKDF2 (600 000 Runden) aus deiner Passphrase abgeleitet. Das Format ist <code>openssl</code>-kompatibel — du kannst es notfalls auf jedem Linux ohne diese App entschlüsseln. Zusätzlich wird ein <b>HMAC</b> im Manifest abgelegt, der bei der Wiederherstellung <i>vor dem Löschen</i> prüft, dass Passphrase und Datei stimmen. Der Server sieht die Passphrase nie.</li>
+      <li>Am Ende wird die Datei umbenannt und es entstehen <code>manifest.json</code> (Prüfsumme, Quelle, Ausschlüsse), <code>system-info.json</code> (Analyse) und eine Kopie des <code>linback-restore.sh</code>-Skripts — der Ordner ist also auch <b>ohne diese App</b> wiederherstellbar.</li>
+    </ol>
+    <p><b>Bewusst nicht im Backup:</b> Partitionstabelle, Bootloader, UUIDs und MAC-gebundene Netzwerk-Regeln. Genau deshalb ist das Backup <b>hardwareunabhängig</b>: Das alles wird erst bei der Wiederherstellung passend zur Zielhardware neu erzeugt.</p>
+    <p class="warn-text">Ohne Verschlüsselung enthält das Archiv <code>/etc/shadow</code>, SSH-Schlüssel und alle Daten im Klartext. <b>Mit</b> Verschlüsselung gilt: Geht die Passphrase verloren, ist das Backup unwiederbringlich verloren — sie wird nirgends gespeichert.</p>
+  </details>
+
+  <div class="grid">
+    <label class="wide">Zielordner für Backups
+      <span class="row"><input id="b-dir" readonly><button id="b-dir-pick" type="button">Wählen …</button></span></label>
+    <label>Kompression
+      <select id="b-comp"><option value="auto">automatisch (zstd, falls vorhanden)</option><option value="zstd">zstd</option><option value="gzip">gzip</option></select></label>
+    <label>Kompressionsstufe <input id="b-level" type="number" min="1" max="19" placeholder="Standard"></label>
+    <label class="check wide"><input id="b-nice" type="checkbox" checked> <span>Last auf dem Server begrenzen (<code>nice</code>/<code>ionice</code>)</span></label>
+    <label class="check wide"><input id="b-enc" type="checkbox" checked> <span><b>Archiv mit Passphrase verschlüsseln</b> (AES-256, empfohlen)</span></label>
+    <label>Passphrase <input id="b-pass" type="password" autocomplete="new-password" placeholder="mindestens 12 Zeichen"></label>
+    <label>Passphrase wiederholen <input id="b-pass2" type="password" autocomplete="new-password"></label>
+    <label class="wide"><span>Zusätzliche Ausschlüsse (ein Muster pro Zeile, z. B. <code>./var/lib/docker/overlay2</code>)</span>
+      <textarea id="b-excl" rows="3" placeholder="./home/*/Downloads"></textarea></label>
+    <label class="wide">Vorbereitender Befehl auf dem Server (optional)
+      <textarea id="b-pre" rows="3" placeholder="mysqldump --all-databases --single-transaction &gt; /root/db-dump.sql"></textarea></label>
+  </div>
+  <details class="explain"><summary>Exakter Befehl, der auf dem Server laufen wird</summary><pre id="b-preview" class="code">Zuerst im Schritt 1 den Server analysieren.</pre><p class="muted" id="b-preview-note"></p></details>
+  <div><button id="b-go" class="primary" disabled>Backup starten</button> <button id="b-cancel" class="danger" hidden>Abbrechen</button> <span id="b-status" class="status"></span></div>
+  <div id="b-progress" class="progress-box" hidden>
+    <div class="bar"><i id="b-bar"></i></div>
+    <div id="b-stats" class="stats"></div>
+  </div>
+  <pre id="b-log" class="log" hidden></pre>
+  <div id="b-result"></div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="tab-3" class="panel">
+  <h1>3 · Backup prüfen</h1>
+  <details class="explain" open>
+    <summary>Was passiert in diesem Schritt?</summary>
+    <ol>
+      <li>Die App liest <code>manifest.json</code> aus dem Backup-Ordner.</li>
+      <li>Sie liest das Archiv komplett von der Platte und berechnet erneut die <b>SHA-256-Prüfsumme</b>. Sie wird mit dem Wert verglichen, der beim Download berechnet wurde. So erkennst du defekte Datenträger, abgebrochene Kopien oder Manipulation <b>bevor</b> du im Ernstfall darauf angewiesen bist.</li>
+      <li>Bei <b>verschlüsselten</b> Backups prüft die App mit deiner Passphrase zusätzlich den <b>HMAC</b>: So erkennst du, ob die Passphrase stimmt und ob jemand das Archiv gezielt verändert hat (die einfache Prüfsumme könnte dann mitgefälscht sein). Ohne Passphrase wird nur die Prüfsumme geprüft.</li>
+      <li>Es wird nichts verändert und keine Verbindung zum Server aufgebaut.</li>
+    </ol>
+    <p class="muted">Tipp: Prüfe wichtige Backups nach jedem Kopieren (USB-Platte, NAS, Cloud). Die Wiederherstellung führt dieselbe Prüfung automatisch aus, bevor Platten gelöscht werden.</p>
+  </details>
+  <div class="grid">
+    <label class="wide">Backup-Ordner <span class="row"><input id="v-dir" readonly><button id="v-pick" type="button">Wählen …</button></span></label>
+    <label class="wide" id="v-pass-wrap">Passphrase (nur bei verschlüsselten Backups, optional für den HMAC-Test) <input id="v-pass" type="password" autocomplete="off"></label>
+    <div class="wide"><button id="v-go" class="primary" disabled>Prüfen</button> <span id="v-status" class="status"></span></div>
+  </div>
+  <div id="v-progress" class="progress-box" hidden><div class="bar"><i id="v-bar"></i></div><div id="v-stats" class="stats"></div></div>
+  <div id="v-result"></div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="tab-4" class="panel">
+  <h1>4 · Auf neuer/leerer Hardware wiederherstellen</h1>
+  <details class="explain" open>
+    <summary>Was passiert in diesem Schritt? (Hetzner Rescue-System)</summary>
+    <p>Du brauchst <b>kein Installationsmedium</b>. Das Rescue-System ist ein kleines Linux, das der Server über das Netzwerk bootet — dein Zielserver läuft dann <i>nicht</i> von seinen eigenen Platten, die daher frei beschreibbar sind.</p>
+    <p><b>Vorbereitung bei Hetzner (Robot):</b> Server wählen → Reiter <i>Rescue</i> → <i>Linux (64 bit)</i> → <i>Aktivieren</i> (Passwort notieren, optional SSH-Schlüssel hinterlegen) → Reiter <i>Reset</i> → <i>Automatischen Hardware-Reset</i> auslösen. Nach 1–2 Minuten ist der Server per SSH als <code>root</code> erreichbar. Beim neuen Rescue-System ändert sich der Host-Schlüssel — die App fragt dann nach.</p>
+    <p>Danach läuft die Wiederherstellung in diesen Phasen — jede wird unten live angezeigt:</p>
+    <ol>
+      <li><b>Archiv prüfen:</b> SHA-256 des Backups gegen das Manifest, bei verschlüsselten Backups zusätzlich der HMAC (falsche Passphrase fällt hier auf). Bei Fehler wird <i>nichts</i> gelöscht.</li>
+      <li><b>Verbinden &amp; Skript hochladen:</b> <code>linback-restore.sh</code> wird nach <code>/tmp</code> des Rescue-Systems kopiert.</li>
+      <li><b>Werkzeuge:</b> Fehlende Programme (<code>sgdisk</code>, <code>mdadm</code>, <code>zstd</code>, …) werden per <code>apt</code> nachinstalliert.</li>
+      <li><b>Platten vorbereiten (LÖSCHT DATEN):</b> Alte RAIDs/Mounts lösen, Platten mit <code>wipefs</code>/<code>sgdisk --zap-all</code> leeren, neue GPT-Partitionen anlegen, ggf. Software-RAID1 erzeugen, ext4 + Swap (+ EFI-Partition) formatieren und nach <code>/mnt/linback-target</code> einhängen.</li>
+      <li><b>Archiv entpacken:</b> Die Archivdatei wird (bei Verschlüsselung <b>lokal auf deinem Rechner entschlüsselt</b> und dann) <b>direkt durch SSH gestreamt</b> und on-the-fly entpackt (<code>zstd -d | tar -x</code>). Das Rescue-System hat nur wenig RAM; deshalb wird nichts zwischengespeichert.</li>
+      <li><b>System an die Hardware anpassen</b> (per <code>chroot</code>): neue <code>/etc/fstab</code> mit den neuen UUIDs · <code>mdadm.conf</code> · alte MAC-/Interface-Bindungen entfernen · <b>Netzwerk neu schreiben</b> · fehlende Boot-Pakete installieren · <b><code>initramfs</code> mit allen Treibern (<code>MODULES=most</code>)</b> neu bauen · <b>GRUB</b> für BIOS oder UEFI (inkl. Fallback-Pfad <code>EFI/BOOT/BOOTX64.EFI</code>, falls das Mainboard den Boot-Eintrag nicht kennt) installieren · <code>update-grub</code>.</li>
+    </ol>
+  </details>
+
+  <h2>a) Backup wählen</h2>
+  <div class="grid">
+    <label class="wide">Backup-Ordner <span class="row"><input id="r-dir" readonly><button id="r-pick" type="button">Wählen …</button></span></label>
+  </div>
+  <div id="r-manifest"></div>
+  <label class="wide" id="r-pass-wrap" hidden>Passphrase des verschlüsselten Archivs <input id="r-pass" type="password" autocomplete="off"></label>
+
+  <h2>b) Zielserver (im Rescue-System) verbinden</h2>
+  <form id="t-form" class="grid" autocomplete="off">
+    <label>Host / IP <input id="t-host" placeholder="Server-IP"></label>
+    <label>Port <input id="t-port" type="number" value="22"></label>
+    <label>Benutzer <input id="t-user" value="root"></label>
+    <label>Rescue-Passwort <input id="t-pass" type="password"></label>
+    <label class="wide">SSH-Schlüsseldatei (optional)
+      <span class="row"><input id="t-key" readonly><button type="button" id="t-key-pick">Wählen …</button><button type="button" id="t-key-clear" class="ghost">×</button></span></label>
+    <div class="wide"><button id="t-go" class="primary">Ziel prüfen</button> <span id="t-status" class="status"></span></div>
+  </form>
+  <div id="t-info"></div>
+
+  <div id="r-plan-section" hidden>
+    <h2>c) Aufteilung &amp; Netzwerk festlegen</h2>
+    <div class="grid">
+      <fieldset class="wide"><legend>Layout</legend>
+        <label class="check"><input type="radio" name="layout" value="single" checked> Einzelne Platte</label>
+        <label class="check"><input type="radio" name="layout" value="raid1"> Software-RAID1 (Spiegel aus 2 Platten, wie Hetzner-Standard)</label>
+      </fieldset>
+      <label>Swap (GB, 0 = keiner) <input id="r-swap" type="number" min="0" value="8"></label>
+      <label>/boot-Größe (MB) <input id="r-boot" type="number" min="256" value="1024"></label>
+      <fieldset class="wide"><legend>Netzwerk nach der Wiederherstellung</legend>
+        <label class="check"><input type="radio" name="net" value="rescue" checked> <span><b>Einstellungen dieses Zielservers übernehmen</b> (empfohlen bei neuer Hardware/neuer IP): IP, Gateway, DNS und MAC-Adresse werden aus dem laufenden Rescue-System gelesen und als neue <code>netplan</code>-Datei geschrieben. Die alte Konfiguration bleibt in <code>/root/linback-netplan-orig</code>.</span></label>
+        <label class="check"><input type="radio" name="net" value="keep"> <span><b>Original behalten, nur Interface/MAC anpassen</b> (gleiche IP wie der alte Server, z. B. bei umgezogener IP). Best-Effort-Anpassung der bestehenden netplan-Dateien.</span></label>
+        <label class="check"><input type="radio" name="net" value="none"> <span><b>Nicht anfassen</b> (du richtest das Netzwerk später per Konsole ein).</span></label>
+      </fieldset>
+    </div>
+    <div id="r-preview"></div>
+
+    <h2>d) Starten</h2>
+    <p class="warn-text"><b>Achtung:</b> Alle Daten auf den gewählten Zielplatten werden unwiderruflich gelöscht.</p>
+    <label class="wide"><span>Tippe zur Bestätigung <code>LÖSCHEN</code></span> <input id="r-confirm" autocomplete="off" placeholder="LÖSCHEN"></label>
+    <div><button id="r-go" class="danger" disabled>Wiederherstellung starten</button> <button id="r-cancel" class="ghost" hidden>Abbrechen</button></div>
+    <ul id="r-phases" class="phases" hidden></ul>
+    <div id="r-progress" class="progress-box" hidden><div class="bar"><i id="r-bar"></i></div><div id="r-stats" class="stats"></div></div>
+    <pre id="r-log" class="log" hidden></pre>
+    <div id="r-result"></div>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="tab-5" class="panel">
+  <h1>5 · Boot-ISO / Restore-Paket (optional)</h1>
+  <details class="explain" open>
+    <summary>Was passiert in diesem Schritt?</summary>
+    <p><b>Wann brauchst du das?</b> Bei Hetzner meist <i>nicht</i> — das Rescue-System (Schritt 4) ersetzt ein ISO. Ein ISO ist sinnvoll, wenn der Server nicht per Netzwerk booten kann, du über die KVM-Konsole mit einem virtuellen Medium arbeitest oder eine Restore-Umgebung offline (USB-Stick) bereithalten willst.</p>
+    <ol>
+      <li><b>Restore-Paket:</b> Die App legt einen Ordner mit <code>linback-restore.sh</code>, einer Anleitung und (optional) deinem Archiv an. Das reicht, um in <i>jedem</i> Linux-Live-System wiederherzustellen.</li>
+      <li><b>Bootbares ISO:</b> Du wählst ein Debian-/Ubuntu-<b>Live-ISO</b> als Basis (z. B. <i>debian-live-…-standard.iso</i> von debian.org — die App lädt nichts selbst herunter). Mit <code>xorriso</code> wird dieses ISO unverändert kopiert (inkl. BIOS- und UEFI-Boot) und um den Ordner <code>/linback</code> ergänzt. Es entsteht <b>kein neues Betriebssystem</b>, nur dein Live-System plus Restore-Werkzeug.</li>
+      <li>Im gebooteten Live-System startest du <code>bash /run/live/medium/linback/linback-restore.sh wizard</code>; das Skript fragt Platten, Layout und Netzwerk ab und führt dieselben Phasen wie Schritt 4 aus.</li>
+    </ol>
+    <p class="muted">Ein ISO mit eingebettetem Archiv wird so groß wie dein Backup. Bei sehr großen Servern ist ein kleines ISO plus Archiv auf USB-Platte/NAS praktischer. Das ISO-Bauen benötigt <code>xorriso</code> (macOS: <code>brew install xorriso</code>; Windows: in WSL).</p>
+  </details>
+  <p id="i-xorriso" class="status"></p>
+  <h2>A) Restore-Paket als Ordner</h2>
+  <div class="grid">
+    <label class="wide">Backup-Ordner, dessen Archiv beigelegt werden soll (optional) <span class="row"><input id="i-backup" readonly><button id="i-backup-pick" type="button">Wählen …</button><button id="i-backup-clear" type="button" class="ghost">×</button></span></label>
+    <div class="wide"><button id="i-stage" class="primary">Restore-Paket erzeugen …</button> <span id="i-stage-status" class="status"></span></div>
+  </div>
+  <h2>B) Bootbares ISO</h2>
+  <div class="grid">
+    <label class="wide">Basis-Live-ISO <span class="row"><input id="i-base" readonly><button id="i-base-pick" type="button">Wählen …</button></span></label>
+    <label class="check wide"><input id="i-embed" type="checkbox"> Archiv aus dem oben gewählten Backup-Ordner ins ISO einbetten</label>
+    <div class="wide"><button id="i-build" class="primary">ISO erzeugen …</button> <span id="i-status" class="status"></span></div>
+  </div>
+  <pre id="i-log" class="log" hidden></pre>
+  <div id="i-result"></div>
+</section>
+</main>
+
+<dialog id="hostkey">
+  <h3 id="hk-title"></h3>
+  <p id="hk-text"></p>
+  <p><code id="hk-fp"></code></p>
+  <menu><button id="hk-no" class="ghost">Abbrechen</button><button id="hk-yes" class="primary">Fingerabdruck vertrauen</button></menu>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
