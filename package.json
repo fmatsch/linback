@@ -1,6 +1,6 @@
 {
   "name": "linback",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Backup & Restore für Linux-Server (Ubuntu/Hetzner) per SSH – hardwareunabhängig",
   "main": "src/main/main.js",
   "scripts": {
@@ -44,7 +44,10 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "win": {
       "target": [

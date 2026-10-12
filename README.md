@@ -59,8 +59,10 @@ backup cannot be resumed. The restore **wipes the selected target disks** after 
 `vmtest/vmtest.js` runs the QEMU-based end-to-end test (see the header of that file; needs `qemu` and an Ubuntu
 22.04 cloud image, keep its work directory out of cloud-synced folders).
 
-The installers are not code-signed: Windows SmartScreen shows "More info -> Run anyway", macOS asks on first launch
-(right click -> Open). Checksums are published as `SHA256SUMS` with every release.
+The installers are not notarized. macOS builds are ad-hoc signed (needed on Apple Silicon, otherwise macOS reports the
+app as "damaged"): on first launch go to System Settings -> Privacy & Security -> "Open Anyway", or run
+`xattr -dr com.apple.quarantine /Applications/linback.app`. Windows SmartScreen shows "More info -> Run anyway".
+Checksums are published as `SHA256SUMS` with every release.
 
 ## License
 

@@ -116,7 +116,7 @@
         <a class="btn primary" id="dl" href="https://github.com/fmatsch/linback/releases/latest">⬇ Herunterladen</a>
         <a class="btn" id="src" href="https://github.com/fmatsch/linback">Quellcode auf GitHub</a>
       </div>
-      <div class="dl-meta" id="dl-meta">v0.1.0 · macOS (Apple Silicon und Intel) · Windows · kostenlos, MIT-Lizenz</div>
+      <div class="dl-meta" id="dl-meta">v0.1.1 · macOS (Apple Silicon und Intel) · Windows · kostenlos, MIT-Lizenz</div>
       <div class="dl-all" id="dl-all" hidden></div>
     </div>
   </header>
@@ -163,7 +163,7 @@
     <li><b>Laufende Datenbanken:</b> Dateien einer laufenden Datenbank sind im Backup nicht konsistent. Lege vorher einen Dump an oder stoppe den Dienst.</li>
     <li><b>Nur x86_64</b> (Ubuntu/Debian) als Ziel. Aktuell nur Ubuntu getestet.</li>
     <li><b>Keine Wiederaufnahme:</b> Ein abgebrochenes Backup startet von vorn.</li>
-    <li><b>SmartScreen / Gatekeeper:</b> Die Programme sind nicht code-signiert. Windows zeigt „Weitere Informationen → Trotzdem ausführen“, macOS fragt beim ersten Start (Rechtsklick → Öffnen). Die Prüfsummen stehen in der Datei <code>SHA256SUMS</code> beim Release.</li>
+    <li><b>Erster Start (nicht signiert):</b> Die Programme sind nicht von Apple bzw. Microsoft beglaubigt. <b>macOS:</b> Die App aus dem DMG in „Programme“ ziehen und öffnen. Meldet macOS, dass die App nicht überprüft werden kann: Systemeinstellungen → Datenschutz &amp; Sicherheit → ganz unten „Trotzdem öffnen“ (bei älteren macOS: Rechtsklick → Öffnen). Alternativ im Terminal: <code>xattr -dr com.apple.quarantine /Applications/linback.app</code>. <b>Windows:</b> SmartScreen zeigt „Weitere Informationen → Trotzdem ausführen“. Die Prüfsummen stehen in der Datei <code>SHA256SUMS</code> beim Release.</li>
   </ul>
 
   <footer>
